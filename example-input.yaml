@@ -1,0 +1,28 @@
+- name: door
+  type: Transitions
+  locations: [t0, t1, o0, o1, c0, c1]
+  states: [open, closed]
+  transitions:
+    open:
+      - [t0, t1, open]
+      - [o0, o1, open]
+      - [c0, c1, closed]
+    closed:
+      - [o0, o1, open]
+      - [c0, c1, closed]
+- name: scd
+  type: Network
+  locations: [t0, t1, o]
+  internal_locations: [a]
+  gadgets:
+    - name: scd
+      locations:
+        t0: t0
+        t1: a
+        o0: o
+        o1: o
+        c0: a
+        c1: t1
+  states:
+    open: [open]
+    closed: [closed]
