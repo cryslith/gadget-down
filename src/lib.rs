@@ -2,8 +2,6 @@ pub mod format;
 
 use std::collections::{HashMap, HashSet};
 
-use itertools::Itertools;
-
 type Location = usize;
 type State = usize;
 type Name = usize;
@@ -19,7 +17,7 @@ struct Transitions {
 struct GadgetSpec {
   name: Name,
   // gadget location -> network location
-  locations: Vec<Location>,
+  locations: Vec<Option<Location>>,
 }
 
 struct Network {
@@ -40,7 +38,7 @@ impl Network {
       g.locations
         .iter()
         .enumerate()
-        .map(move |(k, &v)| (v, (n, k)))
+        .filter_map(move |(k, &v)| v.map(|v| (v, (n, k))))
     }) {
       result[i].push(x);
     }
@@ -61,9 +59,14 @@ impl Network {
       let gstate = states[gsi];
       if let Some(v) = gadget.transitions.get(&(gstate, gloc)) {
         for &(l, s) in v {
+          let new_locations = if let Some(x) = gspec.locations[l] {
+            x
+          } else {
+            continue;
+          };
           let mut new_states = states.clone();
           new_states[gsi] = s;
-          result.push((gspec.locations[l], new_states))
+          result.push((new_locations, new_states))
         }
       }
     }
