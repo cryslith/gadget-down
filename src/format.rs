@@ -41,5 +41,6 @@ pub struct Network {
   gadgets: Vec<GadgetSpec>,
   /// Not all possible states, just the ones important enough to name.
   /// Any states not reachable from these states are eliminated.
+  /// State-vectors correspond to the gadgets field.
   states: HashMap<State, Vec<State>>,
 }
