@@ -2,8 +2,6 @@ pub mod format;
 
 use std::collections::{HashMap, HashSet};
 
-use itertools::Itertools;
-
 type Location = usize;
 type State = usize;
 type Name = usize;
@@ -19,6 +17,8 @@ struct Transitions {
 struct GadgetSpec {
   name: Name,
   // gadget location -> network location
+  // mapping into a location is mandatory since otherwise
+  // we would get bugs from not requiring transitivity
   locations: Vec<Location>,
 }
 
