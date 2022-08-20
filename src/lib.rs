@@ -47,24 +47,78 @@ impl Network {
     result
   }
 
-  fn neighbors(
+  fn neighbors<'a>(
+    &'a self,
+    defs: &'a Vec<Transitions>,
+    rlm: &'a Vec<Vec<(usize, Location)>>,
+    node: (Location, Vec<State>),
+  ) -> impl Iterator<Item = (Location, Vec<State>)> + 'a {
+    let (location, state) = node;
+    rlm[location]
+      .iter()
+      .filter_map(move |&(gsi, gloc)| {
+        let state = state.clone();
+        let gspec = &self.gadgets[gsi];
+        let gadget = &defs[gspec.name];
+        let gstate = state[gsi];
+        gadget.transitions.get(&(gstate, gloc)).map(move |v| {
+          v.iter().map(move |&(l, s)| {
+            let mut new_state = state.clone();
+            new_state[gsi] = s;
+            (gspec.locations[l], new_state)
+          })
+        })
+      })
+      .flatten()
+  }
+
+  fn neighbors_external<'a>(
+    &'a self,
+    defs: &'a Vec<Transitions>,
+    rlm: &'a Vec<Vec<(usize, Location)>>,
+    node: (Location, Vec<State>),
+  ) -> impl Iterator<Item = (Location, Vec<State>)> + 'a {
+    let (location, state) = node;
+    let state_ = state.clone();
+    self.neighbors(defs, rlm, (location, state)).chain(
+      if location < self.external_locations {
+        Some((0..self.external_locations).filter_map(move |l| {
+          if l == location {
+            None
+          } else {
+            Some((l, state_.clone()))
+          }
+        }))
+      } else {
+        None
+      }
+      .into_iter()
+      .flatten(),
+    )
+  }
+
+  fn all_nodes(
     &self,
     defs: &Vec<Transitions>,
     rlm: &Vec<Vec<(usize, Location)>>,
-    states: Vec<State>,
-    location: Location,
-  ) -> Vec<(Location, Vec<State>)> {
-    let mut result: Vec<(Location, Vec<State>)> = vec![];
-    for &(gsi, gloc) in &rlm[location] {
-      let gspec = &self.gadgets[gsi];
-      let gadget = &defs[gspec.name];
-      let gstate = states[gsi];
-      if let Some(v) = gadget.transitions.get(&(gstate, gloc)) {
-        for &(l, s) in v {
-          let mut new_states = states.clone();
-          new_states[gsi] = s;
-          result.push((gspec.locations[l], new_states))
-        }
+  ) -> HashSet<(Location, Vec<State>)> {
+    let mut result = HashSet::new();
+    if self.external_locations == 0 {
+      return result;
+    }
+    let mut frontier: Vec<(Location, Vec<State>)> = self
+      .states
+      .iter()
+      .map(|s| (0, s.clone())) // external location 0 is arbitrary
+      .collect();
+    while !frontier.is_empty() {
+      let x = frontier.pop().unwrap();
+      if result.contains(&x) {
+        continue;
+      }
+      result.insert(x.clone());
+      for n in self.neighbors_external(defs, rlm, x) {
+        frontier.push(n);
       }
     }
     result
