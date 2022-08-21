@@ -250,15 +250,15 @@ mod tests {
         gadgets: vec![
           GadgetSpec {
             name: 1,
-            locations: vec![0, 1, 4, 5],
+            locations: vec![0, 1, 3, 4],
           },
           GadgetSpec {
             name: 2,
-            locations: vec![2, 4, 5],
+            locations: vec![2, 3, 4],
           },
           GadgetSpec {
             name: 0,
-            locations: vec![4, 2],
+            locations: vec![3, 2],
           },
           GadgetSpec {
             name: 0,
