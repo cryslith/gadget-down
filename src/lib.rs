@@ -72,31 +72,6 @@ impl Network {
       .flatten()
   }
 
-  fn neighbors_external<'a>(
-    &'a self,
-    defs: &'a Vec<Transitions>,
-    rlm: &'a Vec<Vec<(usize, Location)>>,
-    node: (Location, Vec<State>),
-  ) -> impl Iterator<Item = (Location, Vec<State>)> + 'a {
-    let (location, state) = node;
-    let state_ = state.clone();
-    self.neighbors(defs, rlm, (location, state)).chain(
-      if location < self.external_locations {
-        Some((0..self.external_locations).filter_map(move |l| {
-          if l == location {
-            None
-          } else {
-            Some((l, state_.clone()))
-          }
-        }))
-      } else {
-        None
-      }
-      .into_iter()
-      .flatten(),
-    )
-  }
-
   /// Compute the state diagram of a Network
   fn transitions(&self, defs: Vec<Transitions>) -> Transitions {
     if self.external_locations == 0 {
