@@ -158,6 +158,14 @@ impl Network {
     result
   }
 
+  fn is_accepting(&self, defs: &Vec<Transitions>, state: &Vec<State>) -> bool {
+    state.iter().enumerate().all(|(i, &s)| {
+      let gspec = &self.gadgets[i];
+      let gadget = &defs[gspec.name];
+      gadget.accept[s]
+    })
+  }
+
   /// Compute the state diagram of a Network
   fn transitions(&self, defs: Vec<Transitions>) -> Transitions {
     let rlm = self.reverse_location_map();
@@ -192,12 +200,16 @@ impl Network {
       })
       .collect();
 
-    todo!("rename external states (consistently with net.states)");
+    let accept = state_renaming
+      .iter()
+      .map(|s| self.is_accepting(&defs, s))
+      .collect();
+
     Transitions {
       locations: self.external_locations,
       states: n_external_states,
       transitions,
-      accept: todo!("compute accepting set of external states"),
+      accept,
     }
   }
 }
