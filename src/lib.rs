@@ -9,7 +9,7 @@ type Name = usize;
 struct Transitions {
   locations: usize,
   states: usize,
-  transitions: HashMap<(State, Location), Vec<(Location, State)>>,
+  transitions: HashMap<(Location, State), HashSet<(Location, State)>>,
   // state -> accept?
   accept: Vec<bool>,
 }
@@ -61,7 +61,7 @@ impl Network {
         let gspec = &self.gadgets[gsi];
         let gadget = &defs[gspec.name];
         let gstate = state[gsi];
-        gadget.transitions.get(&(gstate, gloc)).map(move |v| {
+        gadget.transitions.get(&(gloc, gstate)).map(move |v| {
           v.iter().map(move |&(l, s)| {
             let mut new_state = state.clone();
             new_state[gsi] = s;
@@ -123,21 +123,81 @@ impl Network {
     }
     result
   }
-}
 
-/// Compute the state diagram of a Network
-fn traverse_network(defs: Vec<Transitions>, net: Network) -> Transitions {
-  let reverse_location_map = net.reverse_location_map();
-  let transitions = HashMap::new();
-  let all_external_states: HashSet<Vec<State>> = HashSet::new();
+  fn external_states(&self, all_nodes: &HashSet<(Location, Vec<State>)>) -> HashSet<Vec<State>> {
+    all_nodes
+      .iter()
+      .filter(|(l, s)| *l < self.external_locations)
+      .map(|(l, s)| s)
+      .cloned()
+      .collect()
+  }
 
-  todo!("compute transitions and external states");
+  fn reachability(
+    &self,
+    defs: &Vec<Transitions>,
+    rlm: &Vec<Vec<(usize, Location)>>,
+    all_nodes: &HashSet<(Location, Vec<State>)>,
+    external_states: &HashSet<Vec<State>>,
+  ) -> HashMap<(Location, Vec<State>), HashSet<(Location, Vec<State>)>> {
+    let mut result: HashMap<(Location, Vec<State>), HashSet<(Location, Vec<State>)>> =
+      HashMap::new();
+    for i in all_nodes {
+      result.insert(i.clone(), self.neighbors(defs, rlm, i.clone()).collect());
+    }
+    for k in all_nodes {
+      for i in all_nodes {
+        for j in all_nodes {
+          if result[i].contains(k) && result[k].contains(j) {
+            result.get_mut(i).unwrap().insert(j.clone());
+          }
+        }
+      }
+    }
+    result.retain(|(l, s), _| external_states.contains(s));
+    result
+  }
 
-  todo!("rename external states (consistently with net.states)");
-  Transitions {
-    locations: net.external_locations,
-    states: all_external_states.len(),
-    transitions,
-    accept: todo!("compute accepting set of external states"),
+  /// Compute the state diagram of a Network
+  fn transitions(&self, defs: Vec<Transitions>) -> Transitions {
+    let rlm = self.reverse_location_map();
+    let all_nodes = self.all_nodes(&defs, &rlm);
+    let mut external_states = self.external_states(&all_nodes);
+    let n_external_states = external_states.len();
+    let reachability = self.reachability(&defs, &rlm, &all_nodes, &external_states);
+
+    // rename external states consistently with net.states
+    let mut state_renaming: Vec<Vec<State>> = self.states.clone();
+    for s in &self.states {
+      external_states.remove(s);
+    }
+    for s in external_states {
+      state_renaming.push(s);
+    }
+    let state_renaming_inv: HashMap<Vec<State>, State> = state_renaming
+      .iter()
+      .enumerate()
+      .map(|(i, s)| (s.clone(), i))
+      .collect();
+
+    let transitions: HashMap<(Location, State), HashSet<(Location, State)>> = reachability
+      .iter()
+      .map(|((l, s), n)| {
+        (
+          (*l, state_renaming_inv[s]),
+          n.iter()
+            .map(|(l2, s2)| (*l2, state_renaming_inv[s2]))
+            .collect(),
+        )
+      })
+      .collect();
+
+    todo!("rename external states (consistently with net.states)");
+    Transitions {
+      locations: self.external_locations,
+      states: n_external_states,
+      transitions,
+      accept: todo!("compute accepting set of external states"),
+    }
   }
 }
