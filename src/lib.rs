@@ -97,65 +97,78 @@ impl Network {
     )
   }
 
-  fn all_nodes(
-    &self,
-    defs: &Vec<Transitions>,
-    rlm: &Vec<Vec<(usize, Location)>>,
-  ) -> HashSet<(Location, Vec<State>)> {
-    let mut result = HashSet::new();
+  /// Compute the state diagram of a Network
+  fn transitions(&self, defs: Vec<Transitions>) -> Transitions {
     if self.external_locations == 0 {
-      return result;
+      return Transitions {
+        locations: 0,
+        states: 0,
+        transitions: HashMap::new(),
+        accept: vec![],
+      };
     }
-    let mut frontier: Vec<(Location, Vec<State>)> = self
+
+    let rlm = self.reverse_location_map();
+
+    // rename external states consistently with self.states
+    let mut external_states: Vec<Vec<State>> = self.states.clone();
+    let mut ext_states_inv: HashMap<Vec<State>, State> = self
       .states
       .iter()
-      .map(|s| (0, s.clone())) // external location 0 is arbitrary
+      .enumerate()
+      .map(|(i, s)| (s.clone(), i))
       .collect();
-    while !frontier.is_empty() {
-      let x = frontier.pop().unwrap();
-      if result.contains(&x) {
-        continue;
-      }
-      result.insert(x.clone());
-      for n in self.neighbors_external(defs, rlm, x) {
-        frontier.push(n);
-      }
-    }
-    result
-  }
 
-  fn external_states(&self, all_nodes: &HashSet<(Location, Vec<State>)>) -> HashSet<Vec<State>> {
-    all_nodes
-      .iter()
-      .filter(|(l, s)| *l < self.external_locations)
-      .map(|(l, s)| s)
-      .cloned()
-      .collect()
-  }
+    let mut transitions: HashMap<(Location, State), HashSet<(Location, State)>> = HashMap::new();
 
-  fn reachability(
-    &self,
-    defs: &Vec<Transitions>,
-    rlm: &Vec<Vec<(usize, Location)>>,
-    all_nodes: &HashSet<(Location, Vec<State>)>,
-    external_states: &HashSet<Vec<State>>,
-  ) -> HashMap<(Location, Vec<State>), HashSet<(Location, Vec<State>)>> {
-    let mut result: HashMap<(Location, Vec<State>), HashSet<(Location, Vec<State>)>> =
-      HashMap::new();
-    for i in all_nodes {
-      result.insert(i.clone(), self.neighbors(defs, rlm, i.clone()).collect());
-    }
-    for k in all_nodes {
-      for i in all_nodes {
-        for j in all_nodes {
-          if result[i].contains(k) && result[k].contains(j) {
-            result.get_mut(i).unwrap().insert(j.clone());
+    // search starting from every external state,
+    // discovering new external states along the way
+    let mut state_i = 0;
+    while state_i < external_states.len() {
+      let state = external_states[state_i].clone();
+      for location in 0..self.external_locations {
+        // search from (location, state)
+        let mut frontier: Vec<(Location, Vec<State>)> = vec![(location, state.clone())];
+        let mut seen: HashSet<(Location, Vec<State>)> = HashSet::new();
+        let mut seen_external: HashSet<(Location, State)> = HashSet::new();
+        while !frontier.is_empty() {
+          let x = frontier.pop().unwrap();
+          if seen.contains(&x) {
+            continue;
+          }
+          seen.insert(x.clone());
+          if x.0 < self.external_locations {
+            let ind = if let Some(&ind) = ext_states_inv.get(&x.1) {
+              ind
+            } else {
+              let ind = external_states.len();
+              external_states.push(x.1.clone());
+              ext_states_inv.insert(x.1.clone(), ind);
+              ind
+            };
+            seen_external.insert((x.0, ind));
+          }
+          for n in self.neighbors(&defs, &rlm, x) {
+            frontier.push(n);
           }
         }
+
+        transitions.insert((location, state_i), seen_external);
       }
+      state_i += 1;
     }
-    result.retain(|(l, s), _| external_states.contains(s));
-    result
+
+    let accept = external_states
+      .iter()
+      .map(|s| self.is_accepting(&defs, s))
+      .collect();
+
+    Transitions {
+      locations: self.external_locations,
+      states: external_states.len(),
+      transitions,
+      accept,
+    }
   }
 
   fn is_accepting(&self, defs: &Vec<Transitions>, state: &Vec<State>) -> bool {
@@ -164,52 +177,5 @@ impl Network {
       let gadget = &defs[gspec.name];
       gadget.accept[s]
     })
-  }
-
-  /// Compute the state diagram of a Network
-  fn transitions(&self, defs: Vec<Transitions>) -> Transitions {
-    let rlm = self.reverse_location_map();
-    let all_nodes = self.all_nodes(&defs, &rlm);
-    let mut external_states = self.external_states(&all_nodes);
-    let n_external_states = external_states.len();
-    let reachability = self.reachability(&defs, &rlm, &all_nodes, &external_states);
-
-    // rename external states consistently with net.states
-    let mut state_renaming: Vec<Vec<State>> = self.states.clone();
-    for s in &self.states {
-      external_states.remove(s);
-    }
-    for s in external_states {
-      state_renaming.push(s);
-    }
-    let state_renaming_inv: HashMap<Vec<State>, State> = state_renaming
-      .iter()
-      .enumerate()
-      .map(|(i, s)| (s.clone(), i))
-      .collect();
-
-    let transitions: HashMap<(Location, State), HashSet<(Location, State)>> = reachability
-      .iter()
-      .map(|((l, s), n)| {
-        (
-          (*l, state_renaming_inv[s]),
-          n.iter()
-            .map(|(l2, s2)| (*l2, state_renaming_inv[s2]))
-            .collect(),
-        )
-      })
-      .collect();
-
-    let accept = state_renaming
-      .iter()
-      .map(|s| self.is_accepting(&defs, s))
-      .collect();
-
-    Transitions {
-      locations: self.external_locations,
-      states: n_external_states,
-      transitions,
-      accept,
-    }
   }
 }
