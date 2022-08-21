@@ -73,7 +73,7 @@ impl Network {
   }
 
   /// Compute the state diagram of a Network
-  fn transitions(&self, defs: Vec<Transitions>) -> Transitions {
+  fn transitions(&self, defs: &Vec<Transitions>) -> Transitions {
     if self.external_locations == 0 {
       return Transitions {
         locations: 0,
@@ -123,7 +123,7 @@ impl Network {
             };
             seen_external.insert((x.0, ind));
           }
-          for n in self.neighbors(&defs, &rlm, x) {
+          for n in self.neighbors(defs, &rlm, x) {
             frontier.push(n);
           }
         }
@@ -131,14 +131,16 @@ impl Network {
         // suppress trivial transition
         seen_external.remove(&(location, state_i));
 
-        transitions.insert((location, state_i), seen_external);
+        if !seen_external.is_empty() {
+          transitions.insert((location, state_i), seen_external);
+        }
       }
       state_i += 1;
     }
 
     let accept = external_states
       .iter()
-      .map(|s| self.is_accepting(&defs, s))
+      .map(|s| self.is_accepting(defs, s))
       .collect();
 
     Transitions {
@@ -155,5 +157,87 @@ impl Network {
       let gadget = &defs[gspec.name];
       gadget.accept[s]
     })
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn diode() -> Transitions {
+    Transitions {
+      locations: 2,
+      states: 1,
+      transitions: [((0, 0), [(1, 0)].into_iter().collect())]
+        .into_iter()
+        .collect(),
+      accept: vec![true],
+    }
+  }
+
+  fn l2t() -> Transitions {
+    Transitions {
+      locations: 4,
+      states: 2,
+      transitions: [
+        ((0, 0), [(1, 1)].into_iter().collect()),
+        ((2, 0), [(3, 1)].into_iter().collect()),
+        ((1, 1), [(0, 0)].into_iter().collect()),
+        ((3, 1), [(2, 0)].into_iter().collect()),
+      ]
+      .into_iter()
+      .collect(),
+      accept: vec![true, true],
+    }
+  }
+
+  fn choice_crumbler() -> Transitions {
+    Transitions {
+      locations: 3,
+      states: 2,
+      transitions: [((0, 0), [(1, 1), (2, 1)].into_iter().collect())]
+        .into_iter()
+        .collect(),
+      accept: vec![true, true],
+    }
+  }
+
+  fn one_toggle_net() -> (Vec<Transitions>, Network) {
+    (
+      vec![diode(), l2t(), choice_crumbler()],
+      Network {
+        all_locations: 7,
+        external_locations: 2,
+        gadgets: vec![
+          GadgetSpec {
+            name: 1,
+            locations: vec![0, 2, 3, 4],
+          },
+          GadgetSpec {
+            name: 1,
+            locations: vec![1, 2, 5, 6],
+          },
+        ],
+        states: vec![vec![0, 1]],
+      },
+    )
+  }
+
+  #[test]
+  fn solve_one_toggle_net() {
+    let (defs, n) = one_toggle_net();
+    let t = n.transitions(&defs);
+    assert_eq!(t.locations, 2);
+    assert_eq!(t.states, 2);
+    assert_eq!(t.accept, vec![true, true]);
+    assert_eq!(
+      t.transitions,
+      [
+        ((0, 0), [(1, 1)].into_iter().collect()),
+        ((1, 1), [(0, 0)].into_iter().collect()),
+      ]
+      .into_iter()
+      .collect(),
+    );
   }
 }
