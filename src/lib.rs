@@ -128,6 +128,9 @@ impl Network {
           }
         }
 
+        // suppress trivial transition
+        seen_external.remove(&(location, state_i));
+
         transitions.insert((location, state_i), seen_external);
       }
       state_i += 1;
