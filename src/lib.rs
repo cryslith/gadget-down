@@ -202,7 +202,7 @@ mod tests {
     }
   }
 
-  fn one_toggle_net() -> (Vec<Transitions>, Network) {
+  fn network_1() -> (Vec<Transitions>, Network) {
     (
       vec![diode(), l2t(), choice_crumbler()],
       Network {
@@ -224,8 +224,8 @@ mod tests {
   }
 
   #[test]
-  fn solve_one_toggle_net() {
-    let (defs, n) = one_toggle_net();
+  fn solve_network_1() {
+    let (defs, n) = network_1();
     let t = n.transitions(&defs);
     assert_eq!(t.locations, 2);
     assert_eq!(t.states, 2);
@@ -235,6 +235,59 @@ mod tests {
       [
         ((0, 0), [(1, 1)].into_iter().collect()),
         ((1, 1), [(0, 0)].into_iter().collect()),
+      ]
+      .into_iter()
+      .collect(),
+    );
+  }
+
+  fn network_2() -> (Vec<Transitions>, Network) {
+    (
+      vec![diode(), l2t(), choice_crumbler()],
+      Network {
+        all_locations: 5,
+        external_locations: 3,
+        gadgets: vec![
+          GadgetSpec {
+            name: 1,
+            locations: vec![0, 1, 4, 5],
+          },
+          GadgetSpec {
+            name: 2,
+            locations: vec![2, 4, 5],
+          },
+          GadgetSpec {
+            name: 0,
+            locations: vec![4, 2],
+          },
+          GadgetSpec {
+            name: 0,
+            locations: vec![4, 2],
+          },
+        ],
+        states: vec![vec![0, 0, 0, 0], vec![1, 0, 0, 0], vec![0, 1, 0, 0], vec![1, 1, 0, 0]],
+      },
+    )
+  }
+
+  #[test]
+  fn solve_network_2() {
+    let (defs, n) = network_2();
+    let t = n.transitions(&defs);
+    assert_eq!(t.locations, 3);
+    assert_eq!(t.states, 4);
+    assert_eq!(t.accept, vec![true, true, true, true]);
+    assert_eq!(
+      t.transitions,
+      [
+        ((0, 0), [(1, 1)].into_iter().collect()),
+        ((1, 1), [(0, 0)].into_iter().collect()),
+
+        ((0, 2), [(1, 3)].into_iter().collect()),
+        ((1, 3), [(0, 2)].into_iter().collect()),
+
+        ((2, 0), [(2, 2), (2, 3)].into_iter().collect()),
+        ((2, 1), [(2, 2), (2, 3)].into_iter().collect()),
       ]
       .into_iter()
       .collect(),
