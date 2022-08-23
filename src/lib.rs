@@ -265,7 +265,12 @@ mod tests {
             locations: vec![4, 2],
           },
         ],
-        states: vec![vec![0, 0, 0, 0], vec![1, 0, 0, 0], vec![0, 1, 0, 0], vec![1, 1, 0, 0]],
+        states: vec![
+          vec![0, 0, 0, 0],
+          vec![1, 0, 0, 0],
+          vec![0, 1, 0, 0],
+          vec![1, 1, 0, 0],
+        ],
       },
     )
   }
@@ -282,15 +287,67 @@ mod tests {
       [
         ((0, 0), [(1, 1)].into_iter().collect()),
         ((1, 1), [(0, 0)].into_iter().collect()),
-
         ((0, 2), [(1, 3)].into_iter().collect()),
         ((1, 3), [(0, 2)].into_iter().collect()),
-
         ((2, 0), [(2, 2), (2, 3)].into_iter().collect()),
         ((2, 1), [(2, 2), (2, 3)].into_iter().collect()),
       ]
       .into_iter()
       .collect(),
     );
+  }
+
+  fn otc_door() -> Transitions {
+    Transitions {
+      locations: 6,
+      states: 2,
+      transitions: [
+        ((0, 0), [(1, 0)].into_iter().collect()),
+        ((2, 0), [(3, 0)].into_iter().collect()),
+        ((4, 0), [(5, 1)].into_iter().collect()),
+        ((0, 1), [(1, 0)].into_iter().collect()),
+        ((4, 1), [(5, 1)].into_iter().collect()),
+      ]
+      .into_iter()
+      .collect(),
+      accept: vec![true, true],
+    }
+  }
+
+  fn network_3() -> (Vec<Transitions>, Network) {
+    (
+      vec![otc_door()],
+      Network {
+        all_locations: 15,
+        external_locations: 6,
+        gadgets: vec![
+          GadgetSpec {
+            name: 0,
+            locations: vec![6, 6, 2, 3, 4, 5],
+          },
+          GadgetSpec {
+            name: 0,
+            locations: vec![7, 8, 0, 6, 9, 10],
+          },
+          GadgetSpec {
+            name: 0,
+            locations: vec![11, 12, 6, 1, 13, 14],
+          },
+        ],
+        states: vec![vec![0, 0, 0], vec![1, 0, 0]],
+      },
+    )
+  }
+
+  #[test]
+  fn solve_network_3() {
+    let (defs, n) = network_3();
+    let t = n.transitions(&defs);
+    assert_eq!(t.locations, 6);
+    assert_eq!(t.states, 2);
+    assert_eq!(t.accept, vec![true, true]);
+    let mut transitions = otc_door().transitions;
+    transitions.get_mut(&(0, 1)).unwrap().insert((1, 1));
+    assert_eq!(t.transitions, transitions);
   }
 }
