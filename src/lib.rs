@@ -2,6 +2,8 @@ pub mod format;
 
 use std::collections::{HashMap, HashSet};
 
+use itertools::Itertools;
+
 type Location = usize;
 type State = usize;
 type Name = usize;
@@ -41,6 +43,13 @@ impl Transitions {
         }
       }
     }
+  }
+
+  fn is_deterministic(&self) -> bool {
+    !self
+      .transitions
+      .iter()
+      .any(|(_, s)| s.iter().map(|(l, _)| l).duplicates().any(|_| true))
   }
 }
 
@@ -270,6 +279,7 @@ mod tests {
       .into_iter()
       .collect(),
     );
+    assert!(t.is_deterministic());
   }
 
   fn network_2() -> (Vec<Transitions>, Network) {
@@ -326,6 +336,7 @@ mod tests {
       .into_iter()
       .collect(),
     );
+    assert!(!t.is_deterministic());
   }
 
   fn otc_door() -> Transitions {
@@ -380,5 +391,6 @@ mod tests {
     let mut transitions = otc_door().transitions;
     transitions.get_mut(&(0, 1)).unwrap().insert((1, 1));
     assert_eq!(t.transitions, transitions);
+    assert!(!t.is_deterministic());
   }
 }
