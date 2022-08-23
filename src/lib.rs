@@ -14,6 +14,36 @@ struct Transitions {
   accept: Vec<bool>,
 }
 
+impl Transitions {
+  /// Remove trivial locations from a (location, state) pair to itself.
+  fn remove_trivial(&mut self) {
+    for (k, v) in self.transitions.iter_mut() {
+      v.remove(k);
+    }
+  }
+
+  /// Transitively close the set of transitions.
+  fn transitive_close(&mut self) {
+    let heads: Vec<(Location, State)> = self.transitions.keys().cloned().collect();
+    let tails: Vec<(Location, State)> = self
+      .transitions
+      .values()
+      .map(|s| s.iter())
+      .flatten()
+      .cloned()
+      .collect();
+    for k in &heads {
+      for i in &heads {
+        for j in &tails {
+          if self.transitions[i].contains(k) && self.transitions[k].contains(j) {
+            self.transitions.get_mut(i).unwrap().insert(*j);
+          }
+        }
+      }
+    }
+  }
+}
+
 struct GadgetSpec {
   name: Name,
   // gadget location -> network location
@@ -72,7 +102,8 @@ impl Network {
       .flatten()
   }
 
-  /// Compute the state diagram of a Network
+  /// Compute the state diagram of a Network.
+  /// The result has no trivial transitions and is transitively closed.
   fn transitions(&self, defs: &Vec<Transitions>) -> Transitions {
     if self.external_locations == 0 {
       return Transitions {
