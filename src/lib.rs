@@ -477,5 +477,25 @@ mod tests {
     transitions.get_mut(&(0, 1)).unwrap().insert((1, 1));
     assert_eq!(t.transitions, transitions);
     assert!(!t.is_deterministic());
+
+    let t2 = t.determinize();
+    assert_eq!(t2.locations, 6);
+    assert_eq!(t2.states, 3);
+    assert_eq!(t2.accept, vec![true, true, true]);
+    assert_eq!(
+      t2.transitions,
+      [
+        ((0, 0), [(1, 0)].into_iter().collect()),
+        ((2, 0), [(3, 0)].into_iter().collect()),
+        ((4, 0), [(5, 1)].into_iter().collect()),
+        ((0, 1), [(1, 2)].into_iter().collect()),
+        ((4, 1), [(5, 1)].into_iter().collect()),
+        ((0, 2), [(1, 2)].into_iter().collect()),
+        ((2, 2), [(3, 0)].into_iter().collect()),
+        ((4, 2), [(5, 1)].into_iter().collect()),
+      ]
+      .into_iter()
+      .collect(),
+    );
   }
 }
