@@ -8,6 +8,7 @@ type Location = usize;
 type State = usize;
 type Name = usize;
 
+#[derive(Debug, Clone)]
 struct Transitions {
   locations: usize,
   states: usize,
@@ -50,6 +51,90 @@ impl Transitions {
       .transitions
       .iter()
       .any(|(_, s)| s.iter().map(|(l, _)| l).duplicates().any(|_| true))
+  }
+
+  fn determinize(&self) -> Self {
+    if self.is_deterministic() {
+      return self.clone();
+    }
+    if self.states > 64 {
+      // TODO
+      panic!("too many states");
+    }
+
+    fn from_states(x: impl IntoIterator<Item = State>) -> u64 {
+      x.into_iter().fold(0, |a, b| a | (1 << b))
+    }
+
+    fn to_states(mut x: u64) -> impl Iterator<Item = State> {
+      let mut i = 0;
+      std::iter::from_fn(move || {
+        if x == 0 {
+          None
+        } else {
+          while x & 1 == 0 {
+            x = x >> 1;
+            i += 1;
+          }
+          x = x >> 1;
+          i += 1;
+          Some(i - 1)
+        }
+      })
+    }
+
+    let mut new_states: Vec<u64> = (0..self.states).map(|s| 1 << s).collect();
+    let mut new_states_inv: HashMap<u64, usize> = new_states
+      .iter()
+      .enumerate()
+      .map(|(i, &x)| (x, i))
+      .collect();
+    let mut transitions = HashMap::new();
+    let mut seen = HashSet::new();
+    let mut frontier: Vec<State> = (0..new_states.len()).collect();
+    while !frontier.is_empty() {
+      let x = frontier.pop().unwrap();
+      if seen.contains(&x) {
+        continue;
+      }
+      seen.insert(x);
+      for l1 in 0..self.locations {
+        let l1x_transitions = to_states(new_states[x])
+          .filter_map(|s| self.transitions.get(&(l1, s)).map(|g| g.iter()))
+          .flatten()
+          .cloned()
+          .into_group_map();
+        let mut l1x_new_transitions = HashSet::new();
+        for (l2, states) in l1x_transitions {
+          let y_s = from_states(states);
+          let y_i = if let Some(&y_i) = new_states_inv.get(&y_s) {
+            y_i
+          } else {
+            let y_i = new_states.len();
+            new_states.push(y_s);
+            new_states_inv.insert(y_s, y_i);
+            y_i
+          };
+          l1x_new_transitions.insert((l2, y_i));
+          frontier.push(y_i);
+        }
+
+        l1x_new_transitions.remove(&(l1, x));
+        if !l1x_new_transitions.is_empty() {
+          transitions.insert((l1, x), l1x_new_transitions);
+        }
+      }
+    }
+    let accept = new_states
+      .iter()
+      .map(|&x_s| to_states(x_s).any(|s| self.accept[s]))
+      .collect();
+    Self {
+      locations: self.locations,
+      states: new_states.len(),
+      transitions,
+      accept,
+    }
   }
 }
 
