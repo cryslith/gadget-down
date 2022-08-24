@@ -422,6 +422,26 @@ mod tests {
       .collect(),
     );
     assert!(!t.is_deterministic());
+
+    let t2 = t.determinize();
+    assert_eq!(t2.locations, 3);
+    assert_eq!(t2.states, 5);
+    assert_eq!(t2.accept, vec![true, true, true, true, true]);
+    assert_eq!(
+      t2.transitions,
+      [
+        ((0, 0), [(1, 1)].into_iter().collect()),
+        ((1, 1), [(0, 0)].into_iter().collect()),
+        ((0, 2), [(1, 3)].into_iter().collect()),
+        ((1, 3), [(0, 2)].into_iter().collect()),
+        ((2, 0), [(2, 4)].into_iter().collect()),
+        ((2, 1), [(2, 4)].into_iter().collect()),
+        ((0, 4), [(1, 3)].into_iter().collect()),
+        ((1, 4), [(0, 2)].into_iter().collect()),
+      ]
+      .into_iter()
+      .collect(),
+    );
   }
 
   fn otc_door() -> Transitions {
