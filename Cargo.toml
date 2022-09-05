@@ -8,5 +8,6 @@ authors = ["Lily Chung <lkdc@mit.edu>"]
 
 [dependencies]
 itertools = "0.10"
+refinery = { git = "https://github.com/cryslith/refinery", branch = "expose-rev-partition" }
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"

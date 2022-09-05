@@ -19,6 +19,7 @@ name = "gadget-down"
 version = "0.1.0"
 dependencies = [
  "itertools",
+ "refinery",
  "serde",
  "serde_yaml",
 ]
@@ -71,6 +72,11 @@ checksum = "bbe448f377a7d6961e30f5955f9b8d106c3f5e449d493ee1b125c1d43c2b5179"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "refinery"
+version = "0.1.1"
+source = "git+https://github.com/cryslith/refinery?branch=expose-rev-partition#0ac844f3721762de9886e333b93fe4e76d2963e1"
 
 [[package]]
 name = "ryu"

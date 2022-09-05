@@ -3,6 +3,7 @@ pub mod format;
 use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
+use refinery::Partition;
 
 type Location = usize;
 type State = usize;
@@ -58,7 +59,7 @@ impl Transitions {
       return self.clone();
     }
     if self.states > 64 {
-      // TODO
+      // TODO use a trait for state sets to switch between u64 or hashset
       panic!("too many states");
     }
 
@@ -132,6 +133,91 @@ impl Transitions {
     Self {
       locations: self.locations,
       states: new_states.len(),
+      transitions,
+      accept,
+    }
+  }
+
+  /// Minimize a deterministic gadget using Hopcroft's algorithm
+  fn minimize(&self) -> Self {
+    if !self.is_deterministic() {
+      panic!("cannot minimize nondeterministic gadget");
+    }
+    let mut reverse_state_lookup: HashMap<State, HashMap<(Location, Location), HashSet<State>>> =
+      HashMap::new();
+    for (&(s1, l1), v) in &self.transitions {
+      for &(l2, s2) in v {
+        reverse_state_lookup
+          .entry(s2)
+          .or_default()
+          .entry((l1, l2))
+          .or_default()
+          .insert(s1);
+      }
+    }
+
+    // ignore dead states
+    let mut alive: HashSet<usize> = HashSet::new();
+    let mut frontier: Vec<State> = (0..self.states).filter(|&x| self.accept[x]).collect();
+    while !frontier.is_empty() {
+      let x = frontier.pop().unwrap();
+      if alive.contains(&x) {
+        continue;
+      }
+      alive.insert(x);
+      if let Some(m) = reverse_state_lookup.get(&x) {
+        for (_, v) in m {
+          for &s in v {
+            frontier.push(s);
+          }
+        }
+      }
+    }
+
+    let (accept, reject): (Vec<usize>, Vec<usize>) = alive.iter().partition(|&&x| self.accept[x]);
+    let mut partition = Partition::new(
+      [accept.into_iter(), reject.into_iter()].into_iter(),
+      self.states + 1,
+    );
+
+    // set of parts which are needed for further splits
+    let mut distinguishers: HashSet<usize> = [0, 1].into_iter().collect();
+    while !distinguishers.is_empty() {
+      let a = *distinguishers.iter().next().unwrap();
+      distinguishers.remove(&a);
+      let mut transitions_into_a: HashMap<(Location, Location), HashSet<State>> = HashMap::new();
+      for x in partition.part(a) {
+        if let Some(m) = reverse_state_lookup.get(x) {
+          for (k, v) in m.iter() {
+            transitions_into_a.entry(k).or_default().extend(v);
+          }
+        }
+      }
+
+      for (k, v) in transitions_into_a {
+        let v: Vec<State> = v.iter().cloned().collect();
+        partition.refine_with_callback(&v[..], |partition, orig, new| {
+          if distinguishers.contains(&orig) {
+            // both orig and new are needed since orig was needed
+            distinguishers.insert(new);
+          } else {
+            // orig wasn't needed so we only need one of {orig, new}
+            let smaller = if partition.part(new).len() < partition.part(orig).len() {
+              new
+            } else {
+              orig
+            };
+            distinguishers.insert(smaller);
+          }
+        })
+      }
+    }
+
+    let transitions = todo!();
+    let accept = todo!();
+    Self {
+      locations: self.locations,
+      states: partition.num_parts(),
       transitions,
       accept,
     }
