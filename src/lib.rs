@@ -138,7 +138,7 @@ impl Transitions {
     }
   }
 
-  /// Minimize a deterministic gadget using Hopcroft's algorithm
+  /// Minimize (and canonicalize) a deterministic gadget using Hopcroft's algorithm
   fn minimize(&self) -> Self {
     if !self.is_deterministic() {
       panic!("cannot minimize nondeterministic gadget");
@@ -174,19 +174,31 @@ impl Transitions {
       }
     }
 
-    todo!("handle cases where accept, reject, or both is empty");
+    if alive.is_empty() {
+      return Self {
+        locations: self.locations,
+        states: 1,
+        transitions: HashMap::new(),
+        accept: vec![false],
+      };
+    }
+
     let (accept, reject): (Vec<usize>, Vec<usize>) = alive.iter().partition(|&&x| self.accept[x]);
     let mut partition = Partition::new(
-      [accept.into_iter(), reject.into_iter()].into_iter(),
-      self.states + 1,
+      std::iter::once(accept.into_iter()).chain(if reject.is_empty() {
+        None
+      } else {
+        Some(reject.into_iter())
+      }),
+      self.states,
     );
 
     // set of parts which are needed for further splits
     // maintained as a vec for determinism
-    let mut distinguishers: Vec<usize> = vec![0, 1];
-    let mut distinguishers_set: HashSet<usize> = distinguishers.iter().cloned().collect();
+    let mut distinguishers: Vec<usize> = (0..partition.num_parts()).collect();
+    let mut distinguishers_set: HashSet<usize> = (0..partition.num_parts()).collect();
     // maintain a deterministic order of parts in the partition
-    let mut parts_order = vec![0, 1];
+    let mut parts_order: Vec<usize> = (0..partition.num_parts()).collect();
     while !distinguishers.is_empty() {
       let a = distinguishers.pop().unwrap();
       distinguishers_set.remove(&a);
@@ -199,7 +211,7 @@ impl Transitions {
         }
       }
 
-      for (k, v) in transitions_into_a {
+      for v in transitions_into_a.into_values() {
         let v: Vec<State> = v.iter().cloned().collect();
         let mut new_parts = vec![];
         partition.refine_with_callback(&v[..], |partition, orig, new| {
@@ -229,14 +241,14 @@ impl Transitions {
       }
     }
 
-    let mut transitions: HashMap<(Location, State), HashSet<(Location, State)>>;
-    for ((l1, s1), v) in self.transitions {
+    let mut transitions: HashMap<(Location, State), HashSet<(Location, State)>> = HashMap::new();
+    for (&(l1, s1), v) in &self.transitions {
       let part1 = parts_order[partition.find(s1)];
       if transitions.contains_key(&(l1, part1)) {
         continue;
       }
       let mut v_new = HashSet::new();
-      for (l2, s2) in v {
+      for &(l2, s2) in v {
         let part2 = parts_order[partition.find(s2)];
         v_new.insert((l2, part2));
       }
