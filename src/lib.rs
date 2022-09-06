@@ -174,6 +174,7 @@ impl Transitions {
       }
     }
 
+    todo!("handle cases where accept, reject, or both is empty");
     let (accept, reject): (Vec<usize>, Vec<usize>) = alive.iter().partition(|&&x| self.accept[x]);
     let mut partition = Partition::new(
       [accept.into_iter(), reject.into_iter()].into_iter(),
@@ -181,14 +182,18 @@ impl Transitions {
     );
 
     // set of parts which are needed for further splits
-    let mut distinguishers: HashSet<usize> = [0, 1].into_iter().collect();
+    // maintained as a vec for determinism
+    let mut distinguishers: Vec<usize> = vec![0, 1];
+    let mut distinguishers_set: HashSet<usize> = distinguishers.iter().cloned().collect();
+    // maintain a deterministic order of parts in the partition
+    let mut parts_order = vec![0, 1];
     while !distinguishers.is_empty() {
-      let a = *distinguishers.iter().next().unwrap();
-      distinguishers.remove(&a);
+      let a = distinguishers.pop().unwrap();
+      distinguishers_set.remove(&a);
       let mut transitions_into_a: HashMap<(Location, Location), HashSet<State>> = HashMap::new();
       for x in partition.part(a) {
         if let Some(m) = reverse_state_lookup.get(x) {
-          for (k, v) in m.iter() {
+          for (&k, v) in m.iter() {
             transitions_into_a.entry(k).or_default().extend(v);
           }
         }
@@ -196,10 +201,13 @@ impl Transitions {
 
       for (k, v) in transitions_into_a {
         let v: Vec<State> = v.iter().cloned().collect();
+        let mut new_parts = vec![];
         partition.refine_with_callback(&v[..], |partition, orig, new| {
-          if distinguishers.contains(&orig) {
+          new_parts.push((orig, new));
+          if distinguishers_set.contains(&orig) {
             // both orig and new are needed since orig was needed
-            distinguishers.insert(new);
+            distinguishers.push(new);
+            distinguishers_set.insert(new);
           } else {
             // orig wasn't needed so we only need one of {orig, new}
             let smaller = if partition.part(new).len() < partition.part(orig).len() {
@@ -207,14 +215,39 @@ impl Transitions {
             } else {
               orig
             };
-            distinguishers.insert(smaller);
+            distinguishers.push(smaller);
+            distinguishers_set.insert(smaller);
           }
-        })
+        });
+        // sort the new parts by old part number
+        new_parts.sort_by_cached_key(|&(old, _)| parts_order[old]);
+        let n = parts_order.len();
+        parts_order.resize(n + new_parts.len(), 0);
+        for (i, (_, new)) in new_parts.into_iter().enumerate() {
+          parts_order[new] = n + i;
+        }
       }
     }
 
-    let transitions = todo!();
-    let accept = todo!();
+    let mut transitions: HashMap<(Location, State), HashSet<(Location, State)>>;
+    for ((l1, s1), v) in self.transitions {
+      let part1 = parts_order[partition.find(s1)];
+      if transitions.contains_key(&(l1, part1)) {
+        continue;
+      }
+      let mut v_new = HashSet::new();
+      for (l2, s2) in v {
+        let part2 = parts_order[partition.find(s2)];
+        v_new.insert((l2, part2));
+      }
+      transitions.insert((l1, part1), v_new);
+    }
+
+    let mut accept = vec![false; partition.num_parts()];
+    for (s, &x) in self.accept.iter().enumerate() {
+      accept[parts_order[partition.find(s)]] = x;
+    }
+
     Self {
       locations: self.locations,
       states: partition.num_parts(),
