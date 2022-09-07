@@ -9,7 +9,7 @@ type Location = usize;
 type State = usize;
 type Name = usize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Transitions {
   locations: usize,
   states: usize,
@@ -138,14 +138,36 @@ impl Transitions {
     }
   }
 
+  fn renumber_states(&self, p: Vec<State>) -> Self {
+    if p.len() != self.states {
+      panic!("wrong number of states");
+    }
+    let transitions = self
+      .transitions
+      .iter()
+      .map(|(&(l1, s1), v)| ((l1, p[s1]), v.iter().map(|&(l2, s2)| (l2, p[s2])).collect()))
+      .collect();
+    let mut accept = vec![false; self.states];
+    for i in 0..self.states {
+      accept[p[i]] = self.accept[i];
+    }
+    Self {
+      locations: self.locations,
+      states: self.states,
+      transitions,
+      accept,
+    }
+  }
+
   /// Minimize (and canonicalize) a deterministic gadget using Hopcroft's algorithm
+  // TODO output mapping from old states to new ones
   fn minimize(&self) -> Self {
     if !self.is_deterministic() {
       panic!("cannot minimize nondeterministic gadget");
     }
     let mut reverse_state_lookup: HashMap<State, HashMap<(Location, Location), HashSet<State>>> =
       HashMap::new();
-    for (&(s1, l1), v) in &self.transitions {
+    for (&(l1, s1), v) in &self.transitions {
       for &(l2, s2) in v {
         reverse_state_lookup
           .entry(s2)
@@ -211,7 +233,12 @@ impl Transitions {
         }
       }
 
-      for v in transitions_into_a.into_values() {
+      // sort by input character
+      for v in transitions_into_a
+        .into_iter()
+        .sorted_by_key(|&(k, _)| k)
+        .map(|(_, v)| v)
+      {
         let v: Vec<State> = v.iter().cloned().collect();
         let mut new_parts = vec![];
         partition.refine_with_callback(&v[..], |partition, orig, new| {
@@ -243,6 +270,7 @@ impl Transitions {
 
     let mut transitions: HashMap<(Location, State), HashSet<(Location, State)>> = HashMap::new();
     for (&(l1, s1), v) in &self.transitions {
+      // XXX check if s1 or s2 is dead
       let part1 = parts_order[partition.find(s1)];
       if transitions.contains_key(&(l1, part1)) {
         continue;
@@ -257,6 +285,7 @@ impl Transitions {
 
     let mut accept = vec![false; partition.num_parts()];
     for (s, &x) in self.accept.iter().enumerate() {
+      // XXX check if s is dead
       accept[parts_order[partition.find(s)]] = x;
     }
 
@@ -458,6 +487,13 @@ mod tests {
     }
   }
 
+  #[test]
+  fn minimize_minimized() {
+    for x in [diode(), l2t(), choice_crumbler()] {
+      assert_eq!(x, x.minimize());
+    }
+  }
+
   fn network_1() -> (Vec<Transitions>, Network) {
     (
       vec![diode(), l2t(), choice_crumbler()],
@@ -496,6 +532,7 @@ mod tests {
       .collect(),
     );
     assert!(t.is_deterministic());
+    assert_eq!(t, t.minimize());
   }
 
   fn network_2() -> (Vec<Transitions>, Network) {
@@ -573,6 +610,10 @@ mod tests {
       .into_iter()
       .collect(),
     );
+
+    let t3 = t2.minimize();
+    assert_eq!(t3, t2.renumber_states(vec![2, 1, 4, 3, 0]));
+    assert_eq!(t3, t3.minimize());
   }
 
   fn otc_door() -> Transitions {
@@ -647,6 +688,25 @@ mod tests {
       ]
       .into_iter()
       .collect(),
+    );
+
+    let t3 = t2.minimize();
+    assert_eq!(
+      t3,
+      Transitions {
+        locations: 6,
+        states: 2,
+        accept: vec![true, true],
+        transitions: [
+          ((0, 0), [(1, 0)].into_iter().collect()),
+          ((2, 0), [(3, 0)].into_iter().collect()),
+          ((4, 0), [(5, 1)].into_iter().collect()),
+          ((0, 1), [(1, 0)].into_iter().collect()),
+          ((4, 1), [(5, 1)].into_iter().collect()),
+        ]
+        .into_iter()
+        .collect()
+      },
     );
   }
 }
