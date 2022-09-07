@@ -2,15 +2,29 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-pub type Location = String;
-pub type State = String;
-pub type Name = String;
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Location(pub String);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct State(pub String);
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Name(pub String);
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum Gadget {
+pub enum GadgetDescriptor {
   Transitions(Transitions),
   Network(Network),
+  PostSelect(PostSelect),
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Gadget {
+  #[serde(flatten)]
+  g: GadgetDescriptor,
+  #[serde(default)]
+  determinize: bool,
+  #[serde(default)]
+  minimize: bool,
 }
 
 /// A gadget specified as a state diagram
@@ -22,6 +36,19 @@ pub struct Transitions {
   transitions: HashMap<State, Vec<(Location, Location, State)>>,
   /// A set of accepting states.  If none, defaults to all states.
   accept: Option<Vec<State>>,
+  #[serde(default, skip_serializing)]
+  determinize: bool,
+  #[serde(default, skip_serializing)]
+  minimize: bool,
+}
+
+/// A gadget specified by postselecting another gadget
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PostSelect {
+  name: Name,
+  underlying: Name,
+  strict: bool,
+  transitions: Vec<(Location, Location)>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
