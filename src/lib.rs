@@ -705,7 +705,7 @@ mod tests {
       .collect(),
     );
 
-    let t3 = t2.minimize().0;
+    let (t3, m) = t2.minimize();
     assert_eq!(
       t3,
       Transitions {
@@ -723,5 +723,6 @@ mod tests {
         .collect()
       },
     );
+    assert_eq!(m, vec![Some(0), Some(1), Some(0)]);
   }
 }
