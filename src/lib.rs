@@ -160,8 +160,7 @@ impl Transitions {
   }
 
   /// Minimize (and canonicalize) a deterministic gadget using Hopcroft's algorithm
-  // TODO output mapping from old states to new ones
-  fn minimize(&self) -> Self {
+  fn minimize(&self) -> (Self, Vec<Option<State>>) {
     if !self.is_deterministic() {
       panic!("cannot minimize nondeterministic gadget");
     }
@@ -197,12 +196,15 @@ impl Transitions {
     }
 
     if alive.is_empty() {
-      return Self {
-        locations: self.locations,
-        states: 1,
-        transitions: HashMap::new(),
-        accept: vec![false],
-      };
+      return (
+        Self {
+          locations: self.locations,
+          states: 1,
+          transitions: HashMap::new(),
+          accept: vec![false],
+        },
+        vec![Some(0); self.states],
+      );
     }
 
     let (accept, reject): (Vec<usize>, Vec<usize>) = alive.iter().partition(|&&x| self.accept[x]);
@@ -268,33 +270,46 @@ impl Transitions {
       }
     }
 
+    let mut old_state_mapping = vec![None; self.states];
+    for s in alive {
+      old_state_mapping[s] = Some(partition.find(s));
+    }
+
     let mut transitions: HashMap<(Location, State), HashSet<(Location, State)>> = HashMap::new();
     for (&(l1, s1), v) in &self.transitions {
-      // XXX check if s1 or s2 is dead
-      let part1 = parts_order[partition.find(s1)];
+      let part1 = if let Some(p) = old_state_mapping[s1] {
+        parts_order[p]
+      } else {
+        continue;
+      };
       if transitions.contains_key(&(l1, part1)) {
         continue;
       }
       let mut v_new = HashSet::new();
       for &(l2, s2) in v {
-        let part2 = parts_order[partition.find(s2)];
-        v_new.insert((l2, part2));
+        if let Some(p) = old_state_mapping[s2] {
+          v_new.insert((l2, parts_order[p]));
+        }
       }
       transitions.insert((l1, part1), v_new);
     }
 
     let mut accept = vec![false; partition.num_parts()];
-    for (s, &x) in self.accept.iter().enumerate() {
-      // XXX check if s is dead
-      accept[parts_order[partition.find(s)]] = x;
+    for (s, &x) in old_state_mapping.iter().enumerate() {
+      if let Some(p) = x {
+        accept[parts_order[p]] = self.accept[s];
+      }
     }
 
-    Self {
-      locations: self.locations,
-      states: partition.num_parts(),
-      transitions,
-      accept,
-    }
+    (
+      Self {
+        locations: self.locations,
+        states: partition.num_parts(),
+        transitions,
+        accept,
+      },
+      old_state_mapping,
+    )
   }
 }
 
@@ -490,7 +505,7 @@ mod tests {
   #[test]
   fn minimize_minimized() {
     for x in [diode(), l2t(), choice_crumbler()] {
-      assert_eq!(x, x.minimize());
+      assert_eq!(x, x.minimize().0);
     }
   }
 
@@ -532,7 +547,7 @@ mod tests {
       .collect(),
     );
     assert!(t.is_deterministic());
-    assert_eq!(t, t.minimize());
+    assert_eq!(t, t.minimize().0);
   }
 
   fn network_2() -> (Vec<Transitions>, Network) {
@@ -611,9 +626,9 @@ mod tests {
       .collect(),
     );
 
-    let t3 = t2.minimize();
+    let t3 = t2.minimize().0;
     assert_eq!(t3, t2.renumber_states(vec![2, 1, 4, 3, 0]));
-    assert_eq!(t3, t3.minimize());
+    assert_eq!(t3, t3.minimize().0);
   }
 
   fn otc_door() -> Transitions {
@@ -690,7 +705,7 @@ mod tests {
       .collect(),
     );
 
-    let t3 = t2.minimize();
+    let t3 = t2.minimize().0;
     assert_eq!(
       t3,
       Transitions {
