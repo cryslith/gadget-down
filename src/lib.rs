@@ -706,23 +706,7 @@ mod tests {
     );
 
     let (t3, m) = t2.minimize();
-    assert_eq!(
-      t3,
-      Transitions {
-        locations: 6,
-        states: 2,
-        accept: vec![true, true],
-        transitions: [
-          ((0, 0), [(1, 0)].into_iter().collect()),
-          ((2, 0), [(3, 0)].into_iter().collect()),
-          ((4, 0), [(5, 1)].into_iter().collect()),
-          ((0, 1), [(1, 0)].into_iter().collect()),
-          ((4, 1), [(5, 1)].into_iter().collect()),
-        ]
-        .into_iter()
-        .collect()
-      },
-    );
+    assert_eq!(t3, otc_door());
     assert_eq!(m, vec![Some(0), Some(1), Some(0)]);
   }
 }
