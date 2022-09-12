@@ -10,12 +10,12 @@ type State = usize;
 type Name = usize;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Transitions {
-  locations: usize,
-  states: usize,
-  transitions: HashMap<(Location, State), HashSet<(Location, State)>>,
+pub struct Transitions {
+  pub locations: usize,
+  pub states: usize,
+  pub transitions: HashMap<(Location, State), HashSet<(Location, State)>>,
   // state -> accept?
-  accept: Vec<bool>,
+  pub accept: Vec<bool>,
 }
 
 impl Transitions {
@@ -313,6 +313,47 @@ impl Transitions {
   }
 }
 
+impl From<format::Transitions> for Transitions {
+  fn from(t: format::Transitions) -> Self {
+    let nstates = t.states.len();
+    let nloc = t.locations.len();
+    let state_map: HashMap<format::State, State> = t
+      .states
+      .into_iter()
+      .enumerate()
+      .map(|(i, x)| (x, i))
+      .collect();
+    let location_map: HashMap<format::Location, Location> = t
+      .locations
+      .into_iter()
+      .enumerate()
+      .map(|(i, x)| (x, i))
+      .collect();
+    let mut transitions: HashMap<(Location, State), HashSet<(Location, State)>> = HashMap::new();
+    for (s1, v) in t.transitions {
+      let s1 = state_map[&s1];
+      for (l1, l2, s2) in v {
+        let l1 = location_map[&l1];
+        let l2 = location_map[&l2];
+        let s2 = state_map[&s2];
+        transitions.entry((l1, s1)).or_default().insert((l2, s2));
+      }
+    }
+    let mut accept = vec![false; nstates];
+    if let Some(v) = t.accept {
+      for s in v {
+        accept[state_map[&s]] = true;
+      }
+    }
+    Self {
+      locations: nloc,
+      states: nstates,
+      transitions,
+      accept,
+    }
+  }
+}
+
 struct GadgetSpec {
   name: Name,
   // gadget location -> network location
@@ -348,7 +389,7 @@ impl Network {
 
   fn neighbors<'a>(
     &'a self,
-    defs: &'a Vec<Transitions>,
+    defs: &'a [Transitions],
     rlm: &'a Vec<Vec<(usize, Location)>>,
     node: (Location, Vec<State>),
   ) -> impl Iterator<Item = (Location, Vec<State>)> + 'a {
@@ -373,7 +414,7 @@ impl Network {
 
   /// Compute the state diagram of a Network.
   /// The result has no trivial transitions and is transitively closed.
-  fn transitions(&self, defs: &Vec<Transitions>) -> Transitions {
+  fn transitions(&self, defs: &[Transitions]) -> Transitions {
     if self.external_locations == 0 {
       return Transitions {
         locations: 0,
@@ -451,7 +492,7 @@ impl Network {
     }
   }
 
-  fn is_accepting(&self, defs: &Vec<Transitions>, state: &Vec<State>) -> bool {
+  fn is_accepting(&self, defs: &[Transitions], state: &Vec<State>) -> bool {
     state.iter().enumerate().all(|(i, &s)| {
       let gspec = &self.gadgets[i];
       let gadget = &defs[gspec.name];

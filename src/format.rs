@@ -20,26 +20,22 @@ pub enum GadgetDescriptor {
 #[derive(Debug, Deserialize)]
 pub struct Gadget {
   #[serde(flatten)]
-  g: GadgetDescriptor,
+  pub g: GadgetDescriptor,
   #[serde(default)]
-  determinize: bool,
+  pub determinize: bool,
   #[serde(default)]
-  minimize: bool,
+  pub minimize: bool,
 }
 
 /// A gadget specified as a state diagram
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Transitions {
-  name: Name,
-  locations: Vec<Location>,
-  states: Vec<State>,
-  transitions: HashMap<State, Vec<(Location, Location, State)>>,
+  pub name: Name,
+  pub locations: Vec<Location>,
+  pub states: Vec<State>,
+  pub transitions: HashMap<State, Vec<(Location, Location, State)>>,
   /// A set of accepting states.  If none, defaults to all states.
-  accept: Option<Vec<State>>,
-  #[serde(default, skip_serializing)]
-  determinize: bool,
-  #[serde(default, skip_serializing)]
-  minimize: bool,
+  pub accept: Option<Vec<State>>,
 }
 
 /// A gadget specified by postselecting another gadget

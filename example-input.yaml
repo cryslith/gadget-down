@@ -15,7 +15,7 @@
   locations: [t0, t1, o]
   internal_locations: [a]
   gadgets:
-    - name: scd
+    - name: door
       locations:
         t0: t0
         t1: a
