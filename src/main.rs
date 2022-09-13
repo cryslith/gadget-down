@@ -3,9 +3,9 @@ use format::GadgetDescriptor;
 
 fn main() {
   let inputs: Vec<format::Gadget> = serde_yaml::from_str(include_str!("../example-input.yaml")).unwrap();
-  let outputs: Vec<Transitions> = vec![];
+  let mut outputs: Vec<Transitions> = vec![];
   for (i, format::Gadget { g, determinize, minimize }) in inputs.into_iter().enumerate() {
-    let t: Transitions = match g {
+    let mut t: Transitions = match g {
       GadgetDescriptor::Transitions(t) => {
         t.into()
       }
@@ -16,5 +16,13 @@ fn main() {
         todo!()
       }
     };
+    t.transitive_close();
+    if determinize || minimize {
+      t = t.determinize();
+    }
+    if minimize {
+      t = t.minimize().0;
+    }
+    outputs.push(t);
   }
 }

@@ -19,7 +19,8 @@ pub struct Transitions {
 }
 
 impl Transitions {
-  /// Remove trivial locations from a (location, state) pair to itself.
+  /// Remove trivial transitions from a (location, state) pair to itself.
+  // XXX this seems bad for minimization and postselection.  want to use opposite convention
   fn remove_trivial(&mut self) {
     for (k, v) in self.transitions.iter_mut() {
       v.remove(k);
@@ -27,7 +28,7 @@ impl Transitions {
   }
 
   /// Transitively close the set of transitions.
-  fn transitive_close(&mut self) {
+  pub fn transitive_close(&mut self) {
     let heads: Vec<(Location, State)> = self.transitions.keys().cloned().collect();
     let tails: Vec<(Location, State)> = self
       .transitions
@@ -47,14 +48,14 @@ impl Transitions {
     }
   }
 
-  fn is_deterministic(&self) -> bool {
+  pub fn is_deterministic(&self) -> bool {
     !self
       .transitions
       .iter()
       .any(|(_, s)| s.iter().map(|(l, _)| l).duplicates().any(|_| true))
   }
 
-  fn determinize(&self) -> Self {
+  pub fn determinize(&self) -> Self {
     if self.is_deterministic() {
       return self.clone();
     }
@@ -160,7 +161,7 @@ impl Transitions {
   }
 
   /// Minimize (and canonicalize) a deterministic gadget using Hopcroft's algorithm
-  fn minimize(&self) -> (Self, Vec<Option<State>>) {
+  pub fn minimize(&self) -> (Self, Vec<Option<State>>) {
     if !self.is_deterministic() {
       panic!("cannot minimize nondeterministic gadget");
     }
