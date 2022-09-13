@@ -19,12 +19,14 @@ pub struct Transitions {
 }
 
 impl Transitions {
-  /// Remove trivial transitions from a (location, state) pair to itself.
-  // XXX this seems bad for minimization and postselection.  want to use opposite convention
-  fn remove_trivial(&mut self) {
-    for (k, v) in self.transitions.iter_mut() {
+  /// Remove trivial transitions from a (location, state) pair to itself,
+  /// as well as empty transition lists.
+  // XXX fix other algorithms to account for this suppression
+  fn clean(&mut self) {
+    self.transitions.retain(|k, v| {
       v.remove(k);
-    }
+      !v.is_empty()
+    });
   }
 
   /// Transitively close the set of transitions.
@@ -187,6 +189,8 @@ impl Transitions {
         continue;
       }
       alive.insert(x);
+      // don't need trivial transitions here since they can't
+      // make a state not dead
       if let Some(m) = reverse_state_lookup.get(&x) {
         for (_, v) in m {
           for &s in v {
@@ -228,6 +232,10 @@ impl Transitions {
       let a = distinguishers.pop().unwrap();
       distinguishers_set.remove(&a);
       let mut transitions_into_a: HashMap<(Location, Location), HashSet<State>> = HashMap::new();
+      // don't need to discover trivial transitions here since
+      // if the only way to transition into a on a symbol X->X
+      // is by trivial transitions, then the splitting set would
+      // be just a itself, and thus wouldn't split anything
       for x in partition.part(a) {
         if let Some(m) = reverse_state_lookup.get(x) {
           for (&k, v) in m.iter() {
@@ -237,12 +245,14 @@ impl Transitions {
       }
 
       // sort by input character
-      for v in transitions_into_a
-        .into_iter()
-        .sorted_by_key(|&(k, _)| k)
-        .map(|(_, v)| v)
-      {
-        let v: Vec<State> = v.iter().cloned().collect();
+      for ((l1, l2), mut v) in transitions_into_a.into_iter().sorted_by_key(|&(k, _)| k) {
+        // add trivial transitions
+        if l1 == l2 {
+          for &x in partition.part(a) {
+            v.insert(x);
+          }
+        }
+        let v: Vec<State> = v.into_iter().collect();
         let mut new_parts = vec![];
         partition.refine_with_callback(&v[..], |partition, orig, new| {
           new_parts.push((orig, new));
@@ -292,7 +302,13 @@ impl Transitions {
           v_new.insert((l2, parts_order[p]));
         }
       }
-      transitions.insert((l1, part1), v_new);
+
+      // suppress trivial transition
+      v_new.remove(&(l1, part1));
+
+      if !v_new.is_empty() {
+        transitions.insert((l1, part1), v_new);
+      }
     }
 
     let mut accept = vec![false; partition.num_parts()];
@@ -750,5 +766,24 @@ mod tests {
     let (t3, m) = t2.minimize();
     assert_eq!(t3, otc_door());
     assert_eq!(m, vec![Some(0), Some(1), Some(0)]);
+  }
+
+  #[test]
+  fn test_minimize_trivial_transition() {
+    let t = Transitions {
+      locations: 1,
+      states: 2,
+      transitions: [((0, 1), [(0, 0)].into_iter().collect())]
+        .into_iter()
+        .collect(),
+      accept: vec![true, true],
+    };
+    let u = Transitions {
+      locations: 1,
+      states: 1,
+      transitions: HashMap::new(),
+      accept: vec![true],
+    };
+    assert_eq!(t.minimize().0, u);
   }
 }
