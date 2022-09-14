@@ -13,24 +13,30 @@ type Name = usize;
 pub struct Transitions {
   pub locations: usize,
   pub states: usize,
+  /// All trivial transitions (l, s) -> (l, s) are implicitly assumed to be present,
+  /// unless some other transition (l, s1) -> (l, s2) is listed.
+  /// If such a transition is listed then
+  /// the trivial transition must be explicitly listed if it is present.
   pub transitions: HashMap<(Location, State), HashSet<(Location, State)>>,
   // state -> accept?
   pub accept: Vec<bool>,
 }
 
 impl Transitions {
-  /// Remove trivial transitions from a (location, state) pair to itself,
+  /// Remove unnecessarily-listed trivial transitions from a (location, state) pair to itself,
   /// as well as empty transition lists.
   // XXX fix other algorithms to account for this suppression
   fn clean(&mut self) {
-    self.transitions.retain(|k, v| {
-      v.remove(k);
+    self.transitions.retain(|&(l1, s1), v| {
+      if !v.iter().any(|&(l2, s2)| l1 == l2 && s1 != s2) {
+        v.remove(&(l1, s1));
+      }
       !v.is_empty()
     });
   }
 
-  /// Transitively close the set of transitions.
-  pub fn transitive_close(&mut self) {
+  /// Reflexively and transitively close the set of transitions.
+  pub fn close(&mut self) {
     let heads: Vec<(Location, State)> = self.transitions.keys().cloned().collect();
     let tails: Vec<(Location, State)> = self
       .transitions
@@ -48,6 +54,10 @@ impl Transitions {
         }
       }
     }
+    for &k in &heads {
+      self.transitions.get_mut(&k).unwrap().insert(k);
+    }
+    self.clean();
   }
 
   pub fn is_deterministic(&self) -> bool {
@@ -123,6 +133,7 @@ impl Transitions {
           frontier.push(y_i);
         }
 
+        // suppress trivial transitions since l1->l1 transition is unique
         l1x_new_transitions.remove(&(l1, x));
         if !l1x_new_transitions.is_empty() {
           transitions.insert((l1, x), l1x_new_transitions);
@@ -141,6 +152,7 @@ impl Transitions {
     }
   }
 
+  // TODO p: &[State]
   fn renumber_states(&self, p: Vec<State>) -> Self {
     if p.len() != self.states {
       panic!("wrong number of states");
@@ -162,11 +174,14 @@ impl Transitions {
     }
   }
 
-  /// Minimize (and canonicalize) a deterministic gadget using Hopcroft's algorithm
+  /// Minimize (and canonicalize) a deterministic gadget using Hopcroft's algorithm.
+  /// The canonicalization approach is essentially Section 4.2
+  /// from https://arxiv.org/abs/1306.2405
   pub fn minimize(&self) -> (Self, Vec<Option<State>>) {
     if !self.is_deterministic() {
       panic!("cannot minimize nondeterministic gadget");
     }
+
     let mut reverse_state_lookup: HashMap<State, HashMap<(Location, Location), HashSet<State>>> =
       HashMap::new();
     for (&(l1, s1), v) in &self.transitions {
@@ -232,47 +247,48 @@ impl Transitions {
       let a = distinguishers.pop().unwrap();
       distinguishers_set.remove(&a);
       let mut transitions_into_a: HashMap<(Location, Location), HashSet<State>> = HashMap::new();
-      // don't need to discover trivial transitions here since
-      // if the only way to transition into a on a symbol X->X
-      // is by trivial transitions, then the splitting set would
-      // be just a itself, and thus wouldn't split anything
-      for x in partition.part(a) {
-        if let Some(m) = reverse_state_lookup.get(x) {
+      for &x in partition.part(a) {
+        if let Some(m) = reverse_state_lookup.get(&x) {
           for (&k, v) in m.iter() {
             transitions_into_a.entry(k).or_default().extend(v);
+          }
+        }
+        // add trivial transitions
+        for l in 0..self.locations {
+          if self
+            .transitions
+            .get(&(l, x))
+            .map(|v| !v.iter().any(|&(l2, _)| l == l2))
+            .unwrap_or(true)
+          {
+            transitions_into_a.entry((l, l)).or_default().insert(x);
           }
         }
       }
 
       // sort by input character
-      for ((l1, l2), mut v) in transitions_into_a.into_iter().sorted_by_key(|&(k, _)| k) {
-        // add trivial transitions
-        if l1 == l2 {
-          for &x in partition.part(a) {
-            v.insert(x);
-          }
-        }
+      for ((l1, l2), v) in transitions_into_a.into_iter().sorted_by_key(|&(k, _)| k) {
         let v: Vec<State> = v.into_iter().collect();
         let mut new_parts = vec![];
         partition.refine_with_callback(&v[..], |partition, orig, new| {
           new_parts.push((orig, new));
+        });
+        // sort the new parts by old part number
+        new_parts.sort_by_cached_key(|&(old, _)| parts_order[old]);
+        for &(orig, new) in &new_parts {
           if distinguishers_set.contains(&orig) {
             // both orig and new are needed since orig was needed
             distinguishers.push(new);
             distinguishers_set.insert(new);
           } else {
             // orig wasn't needed so we only need one of {orig, new}
-            let smaller = if partition.part(new).len() < partition.part(orig).len() {
-              new
-            } else {
-              orig
-            };
-            distinguishers.push(smaller);
-            distinguishers_set.insert(smaller);
+            // we choose orig instead of the smaller one to avoid
+            // diverging behavior for equivalent gadgets
+            distinguishers.push(orig);
+            distinguishers_set.insert(orig);
           }
-        });
-        // sort the new parts by old part number
-        new_parts.sort_by_cached_key(|&(old, _)| parts_order[old]);
+        }
+
         let n = parts_order.len();
         parts_order.resize(n + new_parts.len(), 0);
         for (i, (_, new)) in new_parts.into_iter().enumerate() {
@@ -303,7 +319,7 @@ impl Transitions {
         }
       }
 
-      // suppress trivial transition
+      // suppress trivial transition since gadget is deterministic
       v_new.remove(&(l1, part1));
 
       if !v_new.is_empty() {
@@ -430,7 +446,8 @@ impl Network {
   }
 
   /// Compute the state diagram of a Network.
-  /// The result has no trivial transitions and is transitively closed.
+  /// The result is reflexively and transitively closed.
+  // TODO skip listed trivial transitions
   fn transitions(&self, defs: &[Transitions]) -> Transitions {
     if self.external_locations == 0 {
       return Transitions {
@@ -486,9 +503,6 @@ impl Network {
           }
         }
 
-        // suppress trivial transition
-        seen_external.remove(&(location, state_i));
-
         if !seen_external.is_empty() {
           transitions.insert((location, state_i), seen_external);
         }
@@ -501,12 +515,14 @@ impl Network {
       .map(|s| self.is_accepting(defs, s))
       .collect();
 
-    Transitions {
+    let mut result = Transitions {
       locations: self.external_locations,
       states: external_states.len(),
       transitions,
       accept,
-    }
+    };
+    result.clean();
+    result
   }
 
   fn is_accepting(&self, defs: &[Transitions], state: &Vec<State>) -> bool {
@@ -545,7 +561,7 @@ mod tests {
       ]
       .into_iter()
       .collect(),
-      accept: vec![true, true],
+      accept: vec![true; 2],
     }
   }
 
@@ -556,7 +572,7 @@ mod tests {
       transitions: [((0, 0), [(1, 1), (2, 1)].into_iter().collect())]
         .into_iter()
         .collect(),
-      accept: vec![true, true],
+      accept: vec![true; 2],
     }
   }
 
@@ -592,17 +608,20 @@ mod tests {
   fn solve_network_1() {
     let (defs, n) = network_1();
     let t = n.transitions(&defs);
-    assert_eq!(t.locations, 2);
-    assert_eq!(t.states, 2);
-    assert_eq!(t.accept, vec![true, true]);
     assert_eq!(
-      t.transitions,
-      [
-        ((0, 0), [(1, 1)].into_iter().collect()),
-        ((1, 1), [(0, 0)].into_iter().collect()),
-      ]
-      .into_iter()
-      .collect(),
+      t,
+      Transitions {
+        locations: 2,
+        states: 2,
+        transitions: [
+          ((0, 0), [(1, 1)].into_iter().collect()),
+          ((1, 1), [(0, 0)].into_iter().collect()),
+        ]
+        .into_iter()
+        .collect(),
+
+        accept: vec![true; 2],
+      }
     );
     assert!(t.is_deterministic());
     assert_eq!(t, t.minimize().0);
@@ -646,46 +665,86 @@ mod tests {
   fn solve_network_2() {
     let (defs, n) = network_2();
     let t = n.transitions(&defs);
-    assert_eq!(t.locations, 3);
-    assert_eq!(t.states, 4);
-    assert_eq!(t.accept, vec![true, true, true, true]);
     assert_eq!(
-      t.transitions,
-      [
-        ((0, 0), [(1, 1)].into_iter().collect()),
-        ((1, 1), [(0, 0)].into_iter().collect()),
-        ((0, 2), [(1, 3)].into_iter().collect()),
-        ((1, 3), [(0, 2)].into_iter().collect()),
-        ((2, 0), [(2, 2), (2, 3)].into_iter().collect()),
-        ((2, 1), [(2, 2), (2, 3)].into_iter().collect()),
-      ]
-      .into_iter()
-      .collect(),
+      t,
+      Transitions {
+        locations: 3,
+        states: 4,
+        transitions: [
+          ((0, 0), [(1, 1)].into_iter().collect()),
+          ((2, 0), [(2, 0), (2, 2), (2, 3)].into_iter().collect()),
+          ((1, 1), [(0, 0)].into_iter().collect()),
+          ((2, 1), [(2, 1), (2, 2), (2, 3)].into_iter().collect()),
+          ((0, 2), [(1, 3)].into_iter().collect()),
+          ((1, 3), [(0, 2)].into_iter().collect()),
+        ]
+        .into_iter()
+        .collect(),
+        accept: vec![true; 4]
+      }
     );
     assert!(!t.is_deterministic());
 
     let t2 = t.determinize();
-    assert_eq!(t2.locations, 3);
-    assert_eq!(t2.states, 5);
-    assert_eq!(t2.accept, vec![true, true, true, true, true]);
-    assert_eq!(
-      t2.transitions,
-      [
+    let u2 = Transitions {
+      locations: 3,
+      states: 8,
+      transitions: [
         ((0, 0), [(1, 1)].into_iter().collect()),
+        ((2, 0), [(2, 4)].into_iter().collect()),
         ((1, 1), [(0, 0)].into_iter().collect()),
+        ((2, 1), [(2, 5)].into_iter().collect()),
         ((0, 2), [(1, 3)].into_iter().collect()),
         ((1, 3), [(0, 2)].into_iter().collect()),
-        ((2, 0), [(2, 4)].into_iter().collect()),
-        ((2, 1), [(2, 4)].into_iter().collect()),
-        ((0, 4), [(1, 3)].into_iter().collect()),
+        ((0, 4), [(1, 6)].into_iter().collect()),
         ((1, 4), [(0, 2)].into_iter().collect()),
+        ((0, 5), [(1, 3)].into_iter().collect()),
+        ((1, 5), [(0, 7)].into_iter().collect()),
+        ((1, 6), [(0, 7)].into_iter().collect()),
+        ((2, 6), [(2, 5)].into_iter().collect()),
+        ((0, 7), [(1, 6)].into_iter().collect()),
+        ((2, 7), [(2, 4)].into_iter().collect()),
       ]
       .into_iter()
       .collect(),
-    );
+      accept: vec![true; 8],
+    }
+    .renumber_states(vec![0, 1, 2, 3, 7, 4, 6, 5]);
+    // for x in [&t2, &u2] {
+    //   println!("{:?}", x.transitions.iter().sorted_by_key(|(&(l1, s1), _)| (s1, l1)));
+    // }
+    assert_eq!(t2, u2);
 
     let t3 = t2.minimize().0;
-    assert_eq!(t3, t2.renumber_states(vec![2, 1, 4, 3, 0]));
+    let u3 = Transitions {
+      locations: 3,
+      states: 6,
+      transitions: [
+        ((0, 0), [(1, 1)].into_iter().collect()),
+        ((2, 0), [(2, 4)].into_iter().collect()),
+        ((1, 1), [(0, 0)].into_iter().collect()),
+        ((2, 1), [(2, 5)].into_iter().collect()),
+        ((0, 2), [(1, 3)].into_iter().collect()),
+        ((1, 3), [(0, 2)].into_iter().collect()),
+        ((0, 4), [(1, 1)].into_iter().collect()),
+        ((1, 4), [(0, 2)].into_iter().collect()),
+        ((0, 5), [(1, 3)].into_iter().collect()),
+        ((1, 5), [(0, 0)].into_iter().collect()),
+      ]
+      .into_iter()
+      .collect(),
+      accept: vec![true; 6],
+    }
+    .renumber_states(vec![3, 5, 2, 1, 0, 4]);
+    for x in [&t3, &u3, &t3.minimize().0] {
+      println!(
+        "{:?}",
+        x.transitions
+          .iter()
+          .sorted_by_key(|(&(l1, s1), _)| (s1, l1))
+      );
+    }
+    assert_eq!(t3, u3);
     assert_eq!(t3, t3.minimize().0);
   }
 
@@ -702,7 +761,7 @@ mod tests {
       ]
       .into_iter()
       .collect(),
-      accept: vec![true, true],
+      accept: vec![true; 2],
     }
   }
 

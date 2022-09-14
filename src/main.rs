@@ -16,7 +16,7 @@ fn main() {
         todo!()
       }
     };
-    t.transitive_close();
+    t.close();
     if determinize || minimize {
       t = t.determinize();
     }
