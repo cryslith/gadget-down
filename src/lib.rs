@@ -153,7 +153,7 @@ impl Transitions {
   }
 
   // TODO p: &[State]
-  fn renumber_states(&self, p: Vec<State>) -> Self {
+  fn renumber_states(&self, p: &[State]) -> Self {
     if p.len() != self.states {
       panic!("wrong number of states");
     }
@@ -709,7 +709,7 @@ mod tests {
       .collect(),
       accept: vec![true; 8],
     }
-    .renumber_states(vec![0, 1, 2, 3, 7, 4, 6, 5]);
+    .renumber_states(&[0, 1, 2, 3, 7, 4, 6, 5]);
     // for x in [&t2, &u2] {
     //   println!("{:?}", x.transitions.iter().sorted_by_key(|(&(l1, s1), _)| (s1, l1)));
     // }
@@ -735,7 +735,7 @@ mod tests {
       .collect(),
       accept: vec![true; 6],
     }
-    .renumber_states(vec![3, 5, 2, 1, 0, 4]);
+    .renumber_states(&[3, 5, 2, 1, 0, 4]);
     for x in [&t3, &u3, &t3.minimize().0] {
       println!(
         "{:?}",
