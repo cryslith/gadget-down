@@ -22,10 +22,15 @@ pub struct Transitions {
   pub accept: Vec<bool>,
 }
 
+// For compatibility with format
+pub struct TranslateT {
+  pub locations: HashMap<format::Location, Location>,
+  pub states: HashMap<format::State, State>,
+}
+
 impl Transitions {
   /// Remove unnecessarily-listed trivial transitions from a (location, state) pair to itself,
   /// as well as empty transition lists.
-  // XXX fix other algorithms to account for this suppression
   fn clean(&mut self) {
     self.transitions.retain(|&(l1, s1), v| {
       if !v.iter().any(|&(l2, s2)| l1 == l2 && s1 != s2) {
@@ -344,10 +349,8 @@ impl Transitions {
       old_state_mapping,
     )
   }
-}
 
-impl From<format::Transitions> for Transitions {
-  fn from(t: format::Transitions) -> Self {
+  fn from_format(t: format::Transitions) -> (Self, TranslateT) {
     let nstates = t.states.len();
     let nloc = t.locations.len();
     let state_map: HashMap<format::State, State> = t
@@ -378,12 +381,24 @@ impl From<format::Transitions> for Transitions {
         accept[state_map[&s]] = true;
       }
     }
-    Self {
-      locations: nloc,
-      states: nstates,
-      transitions,
-      accept,
-    }
+    (
+      Self {
+        locations: nloc,
+        states: nstates,
+        transitions,
+        accept,
+      },
+      TranslateT {
+        locations: location_map,
+        states: state_map,
+      },
+    )
+  }
+}
+
+impl From<format::Transitions> for Transitions {
+  fn from(t: format::Transitions) -> Self {
+    Self::from_format(t).0
   }
 }
 
